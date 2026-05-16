@@ -1,7 +1,7 @@
 /**
  * 实验室设备管理系统 - 统一认证与页面跳转
  */
-const LOGIN_PAGE = 'login.html';
+const LOGIN_PAGE = 'sign up and  sign in v2.html';
 const ROLE_PAGES = {
     '管理员': 'board_admin.html',
     '实验员': 'board_lab.html',
@@ -13,9 +13,13 @@ function getLoggedUser() {
     return data ? JSON.parse(data) : null;
 }
 
+function setLoggedUser(user) {
+    sessionStorage.setItem('lab_logged_user', JSON.stringify(user));
+}
+
 function requireAuth(allowedRoles) {
     const user = getLoggedUser();
-    if (!user) {
+    if (!user || !user.token) {
         window.location.href = LOGIN_PAGE;
         return null;
     }
@@ -34,7 +38,7 @@ function logout() {
 
 function redirectIfLoggedIn() {
     const user = getLoggedUser();
-    if (user && ROLE_PAGES[user.role]) {
+    if (user && user.token && ROLE_PAGES[user.role]) {
         window.location.href = ROLE_PAGES[user.role];
     }
 }

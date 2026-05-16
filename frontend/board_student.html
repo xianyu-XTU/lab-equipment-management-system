@@ -453,146 +453,142 @@
 </div>
 
 <script src="js/auth.js"></script>
-<script src="js/storage.js"></script>
+<script src="js/api.js"></script>
 <script>
-    initSharedData();
     const currentStudent = requireAuth(['学生']);
     if (!currentStudent) throw new Error('未登录');
 
-    function getMyApplies() {
-        return getApplies().filter(a => a.user_id === currentStudent.id || a.user_name === currentStudent.realName);
+    let cachedApplies = [];
+    let cachedRecords = [];
+    let cachedRepairs = [];
+
+    async function loadMyData() {
+        cachedApplies = await Api.getMyBorrowApplies();
+        cachedRecords = await Api.getMyBorrowRecords();
+        cachedRepairs = await Api.getMyRepairs();
     }
-    function getMyRecords() {
-        return getRecords().filter(r => r.user_id === currentStudent.id || r.user_name === currentStudent.realName);
-    }
-    function getMyRepairs() {
-        return getRepairs().filter(r => r.user_id === currentStudent.id || r.user_name === currentStudent.realName);
-    }
+
     function getMyBorrowView() {
-        const applies = getMyApplies().filter(a => a.status === '待审批').map(a => ({
+        const applies = cachedApplies.filter(a => a.statusCode === 0).map(a => ({
             id: a.id, device_name: a.device_name, apply_time: a.apply_time,
             expected_return: a.expected_return, status: '待审批', type: 'apply'
         }));
-        const records = getMyRecords().map(r => ({
+        const records = cachedRecords.map(r => ({
             id: r.id, device_name: r.device_name,
-            apply_time: r.borrow_time || '-', expected_return: r.expected_return,
+            apply_time: r.borrow_time, expected_return: r.expected_return,
             status: r.status, type: 'record'
         }));
         return [...applies, ...records].sort((a, b) => new Date(b.apply_time) - new Date(a.apply_time));
     }
 
-    // 辅助函数 
     function getBadge(status) {
-        if(status === "可借") return '<span class="badge badge-available">可借</span>';
-        if(status === "已借出") return '<span class="badge badge-borrowed">已借出</span>';
-        if(status === "维修中") return '<span class="badge badge-repair">维修中</span>';
-        if(status === "待审批") return '<span class="badge badge-pending">待审批</span>';
-        if(status === "借用中") return '<span class="badge badge-approved">借用中</span>';
-        if(status === "已归还") return '<span class="badge badge-returned">已归还</span>';
+        if (status === "可借") return '<span class="badge badge-available">可借</span>';
+        if (status === "已借出") return '<span class="badge badge-borrowed">已借出</span>';
+        if (status === "维修中") return '<span class="badge badge-repair">维修中</span>';
+        if (status === "待审批") return '<span class="badge badge-pending">待审批</span>';
+        if (status === "借用中" || status === "逾期") return '<span class="badge badge-approved">' + status + '</span>';
+        if (status === "已归还") return '<span class="badge badge-returned">已归还</span>';
+        if (status === "已完成") return '<span class="badge badge-returned">已完成</span>';
+        if (status === "待处理") return '<span class="badge badge-pending">待处理</span>';
         return status;
     }
 
-    function updateDashboardStats() {
-        const myRecords = getMyRecords();
-        const myRepairs = getMyRepairs();
-        document.getElementById("borrowingCount").innerText = myRecords.filter(r => r.status === "借用中").length;
-        document.getElementById("returnedCount").innerText = myRecords.filter(r => r.status === "已归还").length;
-        document.getElementById("pendingRepairCount").innerText = myRepairs.filter(r => r.status !== "已完成").length;
-        document.getElementById("noticeCount").innerText = getNotices().length;
+    async function updateDashboardStats() {
+        try {
+            await loadMyData();
+            document.getElementById("borrowingCount").innerText = cachedRecords.filter(r => r.statusCode === 1 || r.statusCode === 3).length;
+            document.getElementById("returnedCount").innerText = cachedRecords.filter(r => r.statusCode === 2).length;
+            document.getElementById("pendingRepairCount").innerText = cachedRepairs.filter(r => r.statusCode !== 2).length;
+            const notices = await Api.getNotices();
+            document.getElementById("noticeCount").innerText = notices.length;
 
-        const recent = getMyBorrowView().slice(0, 3);
-        const tbody = document.querySelector("#recentBorrowTable tbody");
-        if (recent.length === 0) tbody.innerHTML = '<tr><td colspan="3" class="empty-row">暂无记录</td></tr>';
-        else tbody.innerHTML = recent.map(r => `<tr><td>${r.device_name}</td><td>${r.apply_time}</td><td>${getBadge(r.status)}</td></tr>`).join('');
+            const recent = getMyBorrowView().slice(0, 3);
+            const tbody = document.querySelector("#recentBorrowTable tbody");
+            if (!recent.length) tbody.innerHTML = '<tr><td colspan="3" class="empty-row">暂无记录</td></tr>';
+            else tbody.innerHTML = recent.map(r => `<tr><td>${r.device_name}</td><td>${r.apply_time}</td><td>${getBadge(r.status)}</td></tr>`).join('');
 
-        const recentRepair = myRepairs.slice(0, 3);
-        const repairTbody = document.querySelector("#recentRepairTable tbody");
-        if (recentRepair.length === 0) repairTbody.innerHTML = '<tr><td colspan="3" class="empty-row">暂无报修</td></tr>';
-        else repairTbody.innerHTML = recentRepair.map(r => `<tr><td>${r.device_name}</td><td>${r.fault_desc}</td><td>${getBadge(r.status === "维修中" ? "维修中" : (r.status === "已完成" ? "已完成" : "待处理"))}</td></tr>`).join('');
+            const recentRepair = cachedRepairs.slice(0, 3);
+            const repairTbody = document.querySelector("#recentRepairTable tbody");
+            if (!recentRepair.length) repairTbody.innerHTML = '<tr><td colspan="3" class="empty-row">暂无报修</td></tr>';
+            else repairTbody.innerHTML = recentRepair.map(r => `<tr><td>${r.device_name}</td><td>${r.fault_desc}</td><td>${getBadge(r.status)}</td></tr>`).join('');
+        } catch (err) { handleApiError(err); }
     }
 
-    function renderDeviceList(filterText = "") {
-        const devices = getDevices();
-        let filtered = devices.filter(d => d.device_name.includes(filterText) || d.device_no.includes(filterText));
-        const tbody = document.getElementById("deviceTableBody");
-        if(filtered.length === 0) tbody.innerHTML = '<tr><td colspan="6" class="empty-row">暂无设备</td></tr>';
-        else {
-            tbody.innerHTML = filtered.map(dev => `
-                <tr>
-                    <td>${dev.device_no}</td><td>${dev.device_name}</td><td>${dev.category}</td><td>${dev.location}</td>
-                    <td>${getBadge(dev.status)}</td>
-                    <td>${dev.status === "可借" ? `<button class="btn-sm primary borrow-action" data-id="${dev.id}" data-name="${dev.device_name}">申请借用</button>` : '<span style="color:#8ba0ae;">不可借</span>'}</td>
-                </tr>
-            `).join('');
-            // 绑定借用按钮事件
-            document.querySelectorAll('.borrow-action').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const id = parseInt(btn.dataset.id);
-                    const name = btn.dataset.name;
-                    openBorrowModal(id, name);
+    async function renderDeviceList(filterText = "") {
+        try {
+            const devices = await Api.getDevices(filterText);
+            const tbody = document.getElementById("deviceTableBody");
+            if (!devices.length) tbody.innerHTML = '<tr><td colspan="6" class="empty-row">暂无设备</td></tr>';
+            else {
+                tbody.innerHTML = devices.map(dev => `
+                    <tr>
+                        <td>${dev.device_no}</td><td>${dev.device_name}</td><td>${dev.category}</td><td>${dev.location}</td>
+                        <td>${getBadge(dev.status)}</td>
+                        <td>${dev.status === "可借" ? `<button class="btn-sm primary borrow-action" data-id="${dev.id}" data-name="${dev.device_name}">申请借用</button>` : '<span style="color:#8ba0ae;">不可借</span>'}</td>
+                    </tr>
+                `).join('');
+                document.querySelectorAll('.borrow-action').forEach(btn => {
+                    btn.addEventListener('click', () => openBorrowModal(parseInt(btn.dataset.id), btn.dataset.name));
                 });
-            });
-        }
+            }
+        } catch (err) { handleApiError(err); }
     }
 
-    function renderBorrowRecords() {
-        const items = getMyBorrowView();
-        const tbody = document.getElementById("borrowTableBody");
-        if (items.length === 0) tbody.innerHTML = '<tr><td colspan="5" class="empty-row">暂无借用记录</td></tr>';
-        else {
-            tbody.innerHTML = items.map(rec => `
-                <tr>
-                    <td>${rec.device_name}</td>
-                    <td>${rec.apply_time}</td><td>${rec.expected_return}</td>
-                    <td>${getBadge(rec.status)}</td>
-                    <td>${rec.status === "待审批" ? `<button class="btn-sm cancel-borrow" data-id="${rec.id}">取消申请</button>` : (rec.status === "借用中" ? `<button class="btn-sm return-device">提醒归还</button>` : '-')}</td>
-                </tr>
-            `).join('');
-            document.querySelectorAll('.cancel-borrow').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const id = parseInt(btn.dataset.id);
-                    saveApplies(getApplies().filter(a => a.id !== id));
-                    renderBorrowRecords();
-                    updateDashboardStats();
-                    alert("已取消借用申请。");
+    async function renderBorrowRecords() {
+        try {
+            await loadMyData();
+            const items = getMyBorrowView();
+            const tbody = document.getElementById("borrowTableBody");
+            if (!items.length) tbody.innerHTML = '<tr><td colspan="5" class="empty-row">暂无借用记录</td></tr>';
+            else {
+                tbody.innerHTML = items.map(rec => `
+                    <tr>
+                        <td>${rec.device_name}</td>
+                        <td>${rec.apply_time}</td><td>${rec.expected_return}</td>
+                        <td>${getBadge(rec.status)}</td>
+                        <td>${rec.status === "待审批" ? '<span style="color:#8ba0ae;">等待审批</span>' : (rec.status === "借用中" || rec.status === "逾期" ? '<button class="btn-sm return-device">提醒归还</button>' : '-')}</td>
+                    </tr>
+                `).join('');
+                document.querySelectorAll('.return-device').forEach(btn => {
+                    btn.addEventListener('click', () => alert("归还操作请联系实验员办理。"));
                 });
-            });
-            document.querySelectorAll('.return-device').forEach(btn => {
-                btn.addEventListener('click', () => alert("归还操作请联系实验员办理。"));
-            });
-        }
+            }
+        } catch (err) { handleApiError(err); }
     }
 
-    function renderRepairs() {
-        const repairs = getMyRepairs();
-        const tbody = document.getElementById("repairTableBody");
-        if (repairs.length === 0) tbody.innerHTML = '<tr><td colspan="5" class="empty-row">暂无报修记录</td></tr>';
-        else {
-            tbody.innerHTML = repairs.map(r => `
-                <tr>
-                    <td>${r.device_name}</td><td>${r.fault_desc}</td><td>${r.report_time}</td>
-                    <td>${getBadge(r.status === "维修中" ? "维修中" : (r.status==="已完成"? "已完成":"待处理"))}</td>
-                    <td>${r.result || '-'}</td>
-                </tr>
-            `).join('');
-        }
+    async function renderRepairs() {
+        try {
+            cachedRepairs = await Api.getMyRepairs();
+            const tbody = document.getElementById("repairTableBody");
+            if (!cachedRepairs.length) tbody.innerHTML = '<tr><td colspan="5" class="empty-row">暂无报修记录</td></tr>';
+            else {
+                tbody.innerHTML = cachedRepairs.map(r => `
+                    <tr>
+                        <td>${r.device_name}</td><td>${r.fault_desc}</td><td>${r.report_time}</td>
+                        <td>${getBadge(r.status)}</td>
+                        <td>${r.result}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (err) { handleApiError(err); }
     }
 
-    function renderNotices() {
-        const notices = getNotices();
-        const container = document.getElementById("noticeList");
-        if (notices.length === 0) container.innerHTML = '<div class="empty-row">暂无公告</div>';
-        else {
-            container.innerHTML = notices.map(n => `
-                <div style="background:#f9fbfd; border-radius:1.2rem; padding:1rem; border-left:5px solid #2c7da0;">
-                    <div style="display:flex; justify-content:space-between;"><strong>${n.title}</strong><span style="font-size:0.7rem; color:#7b8c9c;">${n.publish_time}</span></div>
-                    <div style="margin-top:8px; font-size:0.9rem;">${n.content}</div>
-                </div>
-            `).join('');
-        }
+    async function renderNotices() {
+        try {
+            const notices = await Api.getNotices();
+            const container = document.getElementById("noticeList");
+            if (!notices.length) container.innerHTML = '<div class="empty-row">暂无公告</div>';
+            else {
+                container.innerHTML = notices.map(n => `
+                    <div style="background:#f9fbfd; border-radius:1.2rem; padding:1rem; border-left:5px solid #2c7da0;">
+                        <div style="display:flex; justify-content:space-between;"><strong>${n.title}</strong><span style="font-size:0.7rem; color:#7b8c9c;">${n.publish_time}</span></div>
+                        <div style="margin-top:8px; font-size:0.9rem;">${n.content}</div>
+                    </div>
+                `).join('');
+            }
+        } catch (err) { handleApiError(err); }
     }
 
-    // 借用弹窗
     let currentDeviceId = null;
     function openBorrowModal(deviceId, deviceName) {
         currentDeviceId = deviceId;
@@ -605,116 +601,89 @@
     function closeModal() { document.getElementById("borrowModal").style.display = "none"; }
     function closeRepairModal() { document.getElementById("repairModal").style.display = "none"; }
 
-    function submitBorrow() {
+    async function submitBorrow() {
         const reason = document.getElementById("borrowReason").value.trim();
         const expectedTime = document.getElementById("expectedReturnTime").value;
         if (!reason) { alert("请填写借用原因"); return; }
         if (!expectedTime) { alert("请填写预计归还时间"); return; }
-        const device = getDevices().find(d => d.id === currentDeviceId);
-        if (!device) return;
-        if (device.status !== "可借") { alert("该设备当前不可借用"); return; }
-        const applies = getApplies();
-        applies.unshift({
-            id: Date.now(),
-            user_id: currentStudent.id,
-            user_name: currentStudent.realName,
-            device_id: device.id,
-            device_name: device.device_name,
-            reason: reason,
-            apply_time: new Date().toLocaleString(),
-            expected_return: expectedTime.replace("T", " "),
-            status: "待审批"
-        });
-        saveApplies(applies);
-        renderBorrowRecords();
-        updateDashboardStats();
-        closeModal();
-        alert(`已提交借用申请（设备：${device.device_name}），待实验员审批。`);
+        try {
+            await Api.applyBorrow(currentDeviceId, reason, expectedTime.length === 16 ? expectedTime + ':00' : expectedTime);
+            closeModal();
+            alert('已提交借用申请，待实验员审批。');
+            await renderBorrowRecords();
+            await updateDashboardStats();
+        } catch (err) { handleApiError(err); }
     }
 
-    function submitRepair() {
+    async function submitRepair() {
         const deviceId = parseInt(document.getElementById("repairDeviceSelect").value);
         const fault = document.getElementById("faultDesc").value.trim();
         if (!deviceId || !fault) { alert("请选择设备并填写故障描述"); return; }
-        const device = getDevices().find(d => d.id === deviceId);
-        if (!device) return;
-        const repairs = getRepairs();
-        repairs.unshift({
-            id: Date.now(),
-            user_id: currentStudent.id,
-            device_id: device.id,
-            device_name: device.device_name,
-            user_name: currentStudent.realName,
-            fault_desc: fault,
-            report_time: new Date().toLocaleString(),
-            status: "待处理",
-            result: "等待维修"
-        });
-        saveRepairs(repairs);
-        renderRepairs();
-        updateDashboardStats();
-        closeRepairModal();
-        alert("报修申请已提交，实验员/管理员将尽快处理。");
+        try {
+            await Api.reportRepair(deviceId, fault);
+            closeRepairModal();
+            document.getElementById("faultDesc").value = "";
+            alert("报修申请已提交，实验员/管理员将尽快处理。");
+            await renderRepairs();
+            await updateDashboardStats();
+        } catch (err) { handleApiError(err); }
     }
 
-    function fillRepairDeviceSelect() {
-        const select = document.getElementById("repairDeviceSelect");
-        select.innerHTML = '<option value="">--选择设备--</option>';
-        getDevices().forEach(dev => {
-            select.innerHTML += `<option value="${dev.id}">${dev.device_name} (${dev.device_no})</option>`;
-        });
+    async function fillRepairDeviceSelect() {
+        try {
+            const devices = await Api.getDevices();
+            const select = document.getElementById("repairDeviceSelect");
+            select.innerHTML = '<option value="">--选择设备--</option>';
+            devices.forEach(dev => {
+                select.innerHTML += `<option value="${dev.id}">${dev.device_name} (${dev.device_no})</option>`;
+            });
+        } catch (err) { handleApiError(err); }
     }
 
-    // 导航切换
     function initNavigation() {
         const navs = document.querySelectorAll('.nav-item');
-        const panels = ['dashboardPanel', 'devicesPanel', 'myborrowPanel', 'repairsPanel', 'noticesPanel'];
         navs.forEach(nav => {
-            nav.addEventListener('click', () => {
+            nav.addEventListener('click', async () => {
                 const panelName = nav.dataset.panel;
                 navs.forEach(n => n.classList.remove('active'));
                 nav.classList.add('active');
-                panels.forEach(p => document.getElementById(p).classList.remove('active-panel'));
-                if(panelName === 'dashboard') document.getElementById('dashboardPanel').classList.add('active-panel');
-                if(panelName === 'devices') { document.getElementById('devicesPanel').classList.add('active-panel'); renderDeviceList(); }
-                if(panelName === 'myborrow') { document.getElementById('myborrowPanel').classList.add('active-panel'); renderBorrowRecords(); }
-                if(panelName === 'repairs') { document.getElementById('repairsPanel').classList.add('active-panel'); renderRepairs(); fillRepairDeviceSelect(); }
-                if(panelName === 'notices') { document.getElementById('noticesPanel').classList.add('active-panel'); renderNotices(); }
+                ['dashboardPanel', 'devicesPanel', 'myborrowPanel', 'repairsPanel', 'noticesPanel'].forEach(p => document.getElementById(p).classList.remove('active-panel'));
+                const panelMap = { dashboard: 'dashboardPanel', devices: 'devicesPanel', myborrow: 'myborrowPanel', repairs: 'repairsPanel', notices: 'noticesPanel' };
+                document.getElementById(panelMap[panelName]).classList.add('active-panel');
+                if (panelName === 'devices') await renderDeviceList();
+                if (panelName === 'myborrow') await renderBorrowRecords();
+                if (panelName === 'repairs') { await renderRepairs(); await fillRepairDeviceSelect(); }
+                if (panelName === 'notices') await renderNotices();
             });
         });
-        // 搜索设备
-        document.getElementById('searchDeviceBtn').addEventListener('click', () => {
-            const kw = document.getElementById('deviceSearch').value;
-            renderDeviceList(kw);
-        });
+        document.getElementById('searchDeviceBtn').addEventListener('click', () => renderDeviceList(document.getElementById('deviceSearch').value));
         document.getElementById('deviceSearch').addEventListener('keyup', (e) => {
-            if(e.key === 'Enter') renderDeviceList(e.target.value);
+            if (e.key === 'Enter') renderDeviceList(e.target.value);
         });
     }
 
     document.getElementById('logoutBtn').addEventListener('click', logout);
-
-    // 模态框事件绑定
     document.getElementById('closeModalBtn').addEventListener('click', closeModal);
     document.getElementById('confirmBorrowBtn').addEventListener('click', submitBorrow);
-    document.getElementById('newRepairBtn').addEventListener('click', () => {
-        fillRepairDeviceSelect();
+    document.getElementById('newRepairBtn').addEventListener('click', async () => {
+        await fillRepairDeviceSelect();
         document.getElementById('repairModal').style.display = "flex";
     });
     document.getElementById('closeRepairModalBtn').addEventListener('click', closeRepairModal);
     document.getElementById('confirmRepairBtn').addEventListener('click', submitRepair);
-    window.onclick = function(e) { if(e.target.classList.contains('modal')) e.target.style.display = "none"; };
+    window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.style.display = "none"; };
 
-    // 初始化
-    function init() {
+    async function init() {
         document.getElementById("studentName").innerText = currentStudent.realName;
-        renderDeviceList();
-        renderBorrowRecords();
-        renderRepairs();
-        renderNotices();
-        updateDashboardStats();
         initNavigation();
-        fillRepairDeviceSelect();
+        await Promise.all([
+            renderDeviceList(),
+            renderBorrowRecords(),
+            renderRepairs(),
+            renderNotices(),
+            updateDashboardStats(),
+            fillRepairDeviceSelect()
+        ]);
     }
     init();
 </script>

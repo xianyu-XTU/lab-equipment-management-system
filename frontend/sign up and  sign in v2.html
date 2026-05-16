@@ -281,146 +281,10 @@
 </div>
 
 <script src="js/auth.js"></script>
-<script src="js/storage.js"></script>
+<script src="js/api.js"></script>
 <script>
-    // ---------- 模拟本地数据库 ----------
-    const STORAGE_KEY = STORAGE_KEYS.USERS;
-    const defaultUsers = [
-        {
-            id: 1,
-            username: "admin",
-            password: "123456",
-            realName: "系统管理员",
-            phone: "13800000000",
-            role: "管理员",
-            roleCode: "ADMIN"
-        },
-        {
-            id: 2,
-            username: "lab",
-            password: "123456",
-            realName: "实验员",
-            phone: "13800000001",
-            role: "实验员",
-            roleCode: "LAB_ADMIN"
-        },
-        {
-            id: 3,
-            username: "student",
-            password: "123456",
-            realName: "学生用户",
-            phone: "13800000002",
-            role: "学生",
-            roleCode: "STUDENT"
-        }
-    ];
-
-    // 初始化本地用户数据 
-    function initUserData() {
-        const existing = localStorage.getItem(STORAGE_KEY);
-        if (!existing) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultUsers));
-        } else {
-            let users = JSON.parse(existing);
-            const presetUsernames = defaultUsers.map(u => u.username);
-            let needUpdate = false;
-            for (let preset of defaultUsers) {
-                if (!users.some(u => u.username === preset.username)) {
-                    users.push(preset);
-                    needUpdate = true;
-                }
-            }
-            if (needUpdate) {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-            }
-        }
-    }
-
-    // 获取所有用户
-    function getUsers() {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    }
-
-    // 保存用户
-    function saveUsers(users) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-    }
-
-    // 检查用户名唯一性
-    function isUsernameUnique(username, excludeId = null) {
-        const users = getUsers();
-        return !users.some(user => user.username === username && (excludeId === null || user.id !== excludeId));
-    }
-
-    // 检查手机号唯一性
-    function isPhoneUnique(phone, excludeId = null) {
-        const users = getUsers();
-        return !users.some(user => user.phone === phone && (excludeId === null || user.id !== excludeId));
-    }
-
-    // 手机号简单校验
     function validatePhone(phone) {
-        const phoneRegex = /^1[3-9]\d{9}$/;
-        return phoneRegex.test(phone);
-    }
-
-    // 注册新用户
-    function registerNewUser(username, realName, phone, password, role) {
-        if (!username || !realName || !phone || !password || !role) {
-            return { success: false, message: "请填写所有必填项！" };
-        }
-        if (username.length < 3) {
-            return { success: false, message: "用户名长度至少3个字符" };
-        }
-        if (password.length < 6) {
-            return { success: false, message: "密码长度至少6位" };
-        }
-        if (!validatePhone(phone)) {
-            return { success: false, message: "手机号格式不正确（须为11位有效手机号）" };
-        }
-        if (!isUsernameUnique(username)) {
-            return { success: false, message: "用户名已存在，请更换" };
-        }
-        if (!isPhoneUnique(phone)) {
-            return { success: false, message: "手机号已被注册，请联系管理员" };
-        }
-
-        const users = getUsers();
-        const newId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 4;
-        let roleCode = "";
-        if (role === "学生") roleCode = "STUDENT";
-        else if (role === "实验员") roleCode = "LAB_ADMIN";
-        else if (role === "管理员") roleCode = "ADMIN";
-        
-        const newUser = {
-            id: newId,
-            username: username,
-            password: password,
-            realName: realName,
-            phone: phone,
-            role: role,
-            roleCode: roleCode
-        };
-        users.push(newUser);
-        saveUsers(users);
-        return { success: true, message: "注册成功！请登录", user: newUser };
-    }
-
-    // 登录校验
-    function loginUser(username, password) {
-        if (!username || !password) {
-            return { success: false, message: "请输入用户名和密码" };
-        }
-        const users = getUsers();
-        const user = users.find(u => u.username === username && u.password === password);
-        if (!user) {
-            return { success: false, message: "用户名或密码错误" };
-        }
-        return { 
-            success: true, 
-            message: `欢迎回来，${user.realName} (${user.role}) · 实验室设备系统已就绪`,
-            user: user
-        };
+        return /^1[3-9]\d{9}$/.test(phone);
     }
 
     // ----- UI 动态效果 & 表单切换 ----
@@ -454,27 +318,22 @@
     const loginForm = document.getElementById('loginForm');
     const loginMessageDiv = document.getElementById('loginMessage');
 
-    loginForm.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('loginUsername').value.trim();
         const password = document.getElementById('loginPassword').value.trim();
-        const result = loginUser(username, password);
-        if (result.success) {
-            loginMessageDiv.innerHTML = `<span style="color: #2c7da0;">✓ ${result.message}</span>`;
-            loginMessageDiv.style.color = "#155f7c";
-            sessionStorage.setItem("lab_logged_user", JSON.stringify({ 
-                id: result.user.id,
-                username: result.user.username, 
-                role: result.user.role,
-                roleCode: result.user.roleCode,
-                realName: result.user.realName
-            }));
-            const targetPage = getRolePage(result.user.role);
-            loginMessageDiv.innerHTML += `<br><span style="font-size:0.75rem;">正在跳转...</span>`;
-            setTimeout(() => { window.location.href = targetPage; }, 800);
-        } else {
-            loginMessageDiv.innerHTML = `<span style="color: #e25c5c;">✗ ${result.message}</span>`;
-            loginMessageDiv.style.color = "#e25c5c";
+        if (!username || !password) {
+            loginMessageDiv.innerHTML = `<span style="color: #e25c5c;">✗ 请输入用户名和密码</span>`;
+            return;
+        }
+        try {
+            const user = await Api.login(username, password);
+            const message = `欢迎回来，${user.realName} (${user.role}) · 实验室设备系统已就绪`;
+            loginMessageDiv.innerHTML = `<span style="color: #2c7da0;">✓ ${message}</span><br><span style="font-size:0.75rem;">正在跳转...</span>`;
+            setLoggedUser(user);
+            setTimeout(() => { window.location.href = getRolePage(user.role); }, 800);
+        } catch (err) {
+            loginMessageDiv.innerHTML = `<span style="color: #e25c5c;">✗ ${err.message}</span>`;
         }
     });
 
@@ -482,7 +341,7 @@
     const registerForm = document.getElementById('registerForm');
     const registerMessageDiv = document.getElementById('registerMessage');
 
-    registerForm.addEventListener('submit', (e) => {
+    registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('regUsername').value.trim();
         const realName = document.getElementById('regRealName').value.trim();
@@ -491,13 +350,20 @@
         const confirmPwd = document.getElementById('regConfirmPwd').value.trim();
         const role = document.getElementById('regRole').value;
 
-        // 前端手工二次校验
         if (!username || !realName || !phone || !password || !confirmPwd || !role) {
             registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">请填写完整所有字段（包含角色）</span>`;
             return;
         }
+        if (role !== '学生') {
+            registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">公开注册仅支持学生账号，实验员/管理员请联系系统管理员创建</span>`;
+            return;
+        }
         if (password !== confirmPwd) {
             registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">两次输入的密码不一致</span>`;
+            return;
+        }
+        if (username.length < 3) {
+            registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">用户名长度至少3个字符</span>`;
             return;
         }
         if (password.length < 6) {
@@ -509,29 +375,24 @@
             return;
         }
 
-        const result = registerNewUser(username, realName, phone, password, role);
-        if (result.success) {
-            registerMessageDiv.innerHTML = `<span style="color: #2c7da0;">✓ ${result.message}</span>`;
+        try {
+            await Api.register({ username, password, realName, phone });
+            registerMessageDiv.innerHTML = `<span style="color: #2c7da0;">✓ 注册成功！请登录</span>`;
             document.getElementById('regUsername').value = '';
             document.getElementById('regRealName').value = '';
             document.getElementById('regPhone').value = '';
             document.getElementById('regPassword').value = '';
             document.getElementById('regConfirmPwd').value = '';
             document.getElementById('regRole').value = '';
-            
             setTimeout(() => {
                 switchToLogin();
                 document.getElementById('loginUsername').value = username;
                 document.getElementById('loginPassword').value = '';
-                registerMessageDiv.innerHTML = ''; 
-                const loginMsg = document.getElementById('loginMessage');
-                loginMsg.innerHTML = `<span style="color: #2c7da0;">账号注册成功，请输入密码登录</span>`;
-                setTimeout(() => {
-                    if(loginMsg.innerHTML.includes("注册成功")) loginMsg.innerHTML = '';
-                }, 3000);
+                registerMessageDiv.innerHTML = '';
+                document.getElementById('loginMessage').innerHTML = `<span style="color: #2c7da0;">账号注册成功，请输入密码登录</span>`;
             }, 1200);
-        } else {
-            registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">${result.message}</span>`;
+        } catch (err) {
+            registerMessageDiv.innerHTML = `<span style="color: #e25c5c;">${err.message}</span>`;
         }
     });
 
@@ -547,11 +408,7 @@
     document.getElementById('regConfirmPwd').addEventListener('input', clearRegErr);
     document.getElementById('regRole').addEventListener('change', clearRegErr);
 
-    initUserData();
-    initSharedData();
     redirectIfLoggedIn();
-    
-    console.log("实验室设备管理系统已启动 | 预设账号: admin, lab, student (密码均为123456)");
 </script>
 </body>
 </html>
