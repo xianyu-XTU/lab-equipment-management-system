@@ -1,130 +1,127 @@
-CREATE DATABASE IF NOT EXISTS lab_equipment
-DEFAULT CHARACTER SET utf8mb4
-DEFAULT COLLATE utf8mb4_general_ci;
-
+DROP DATABASE IF EXISTS lab_equipment;
+CREATE DATABASE lab_equipment DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE lab_equipment;
 
-DROP TABLE IF EXISTS notice;
-DROP TABLE IF EXISTS repair_record;
-DROP TABLE IF EXISTS borrow_record;
-DROP TABLE IF EXISTS borrow_apply;
-DROP TABLE IF EXISTS device;
-DROP TABLE IF EXISTS device_category;
-DROP TABLE IF EXISTS user;
-DROP TABLE IF EXISTS role;
-
 CREATE TABLE role (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '角色ID',
-    role_name VARCHAR(50) NOT NULL COMMENT '角色名称',
-    role_code VARCHAR(50) NOT NULL UNIQUE COMMENT '角色编码'
-) COMMENT='角色表';
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    role_code VARCHAR(50) NOT NULL UNIQUE,
+    role_name VARCHAR(50) NOT NULL
+) COMMENT='role table';
 
 CREATE TABLE user (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
-    username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
-    password VARCHAR(100) NOT NULL COMMENT '密码',
-    real_name VARCHAR(50) COMMENT '真实姓名',
-    phone VARCHAR(20) COMMENT '手机号',
-    email VARCHAR(100) COMMENT '邮箱',
-    role_id BIGINT NOT NULL COMMENT '角色ID',
-    status TINYINT DEFAULT 1 COMMENT '状态：1正常，0禁用',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(100) NOT NULL,
+    real_name VARCHAR(50),
+    phone VARCHAR(30),
+    email VARCHAR(100),
+    role_id BIGINT NOT NULL,
+    status TINYINT DEFAULT 1 COMMENT '1 enabled, 0 disabled',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (role_id) REFERENCES role(id)
-) COMMENT='用户表';
+) COMMENT='user table';
 
 CREATE TABLE device_category (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '分类ID',
-    category_name VARCHAR(100) NOT NULL COMMENT '分类名称',
-    description VARCHAR(255) COMMENT '分类说明',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
-) COMMENT='设备分类表';
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(255),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+) COMMENT='device category table';
 
 CREATE TABLE device (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '设备ID',
-    device_no VARCHAR(50) NOT NULL UNIQUE COMMENT '设备编号',
-    device_name VARCHAR(100) NOT NULL COMMENT '设备名称',
-    category_id BIGINT NOT NULL COMMENT '分类ID',
-    model VARCHAR(100) COMMENT '型号规格',
-    location VARCHAR(100) COMMENT '存放位置',
-    purchase_date DATE COMMENT '购入日期',
-    status TINYINT DEFAULT 1 COMMENT '状态：1可借，2已借出，3维修中，4报废',
-    description VARCHAR(255) COMMENT '设备说明',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    category_id BIGINT,
+    device_no VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    model VARCHAR(100),
+    location VARCHAR(100),
+    status TINYINT DEFAULT 1 COMMENT '1 available, 2 borrowed, 3 repairing, 4 disabled',
+    purchase_date DATE,
+    remark VARCHAR(255),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES device_category(id)
-) COMMENT='设备表';
+) COMMENT='device table';
 
 CREATE TABLE borrow_apply (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '申请ID',
-    user_id BIGINT NOT NULL COMMENT '申请人ID',
-    device_id BIGINT NOT NULL COMMENT '设备ID',
-    apply_reason VARCHAR(255) COMMENT '借用原因',
-    apply_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
-    expected_return_time DATETIME COMMENT '预计归还时间',
-    status TINYINT DEFAULT 0 COMMENT '状态：0待审批，1通过，2拒绝',
-    approve_user_id BIGINT COMMENT '审批人ID',
-    approve_time DATETIME COMMENT '审批时间',
-    approve_remark VARCHAR(255) COMMENT '审批备注',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    apply_reason VARCHAR(255),
+    expected_return_time DATETIME NOT NULL,
+    apply_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status TINYINT DEFAULT 0 COMMENT '0 pending, 1 approved, 2 rejected',
+    approve_user_id BIGINT,
+    approve_time DATETIME,
+    approve_remark VARCHAR(255),
+    FOREIGN KEY (device_id) REFERENCES device(id),
     FOREIGN KEY (user_id) REFERENCES user(id),
-    FOREIGN KEY (device_id) REFERENCES device(id)
-) COMMENT='借用申请表';
+    FOREIGN KEY (approve_user_id) REFERENCES user(id)
+) COMMENT='borrow application table';
 
 CREATE TABLE borrow_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '借还记录ID',
-    apply_id BIGINT NOT NULL COMMENT '申请ID',
-    device_id BIGINT NOT NULL COMMENT '设备ID',
-    user_id BIGINT NOT NULL COMMENT '借用人ID',
-    borrow_time DATETIME COMMENT '借出时间',
-    return_time DATETIME COMMENT '归还时间',
-    status TINYINT DEFAULT 1 COMMENT '状态：1借用中，2已归还，3逾期',
-    remark VARCHAR(255) COMMENT '备注',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    apply_id BIGINT NOT NULL,
+    device_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    borrow_time DATETIME,
+    return_time DATETIME,
+    status TINYINT DEFAULT 1 COMMENT '1 borrowing, 2 returned, 3 overdue unreturned',
+    is_overdue TINYINT DEFAULT 0 COMMENT '0 no, 1 yes',
+    remark VARCHAR(255),
     FOREIGN KEY (apply_id) REFERENCES borrow_apply(id),
     FOREIGN KEY (device_id) REFERENCES device(id),
     FOREIGN KEY (user_id) REFERENCES user(id)
-) COMMENT='借还记录表';
+) COMMENT='borrow record table';
 
 CREATE TABLE repair_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '报修ID',
-    device_id BIGINT NOT NULL COMMENT '设备ID',
-    user_id BIGINT NOT NULL COMMENT '报修人ID',
-    fault_desc VARCHAR(255) NOT NULL COMMENT '故障描述',
-    repair_status TINYINT DEFAULT 0 COMMENT '状态：0待处理，1维修中，2已完成',
-    repair_result VARCHAR(255) COMMENT '维修结果',
-    report_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '报修时间',
-    finish_time DATETIME COMMENT '完成时间',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    device_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    fault_desc VARCHAR(500) NOT NULL,
+    report_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status TINYINT DEFAULT 0 COMMENT '0 pending, 1 processing, 2 finished',
+    handle_user_id BIGINT,
+    handle_time DATETIME,
+    handle_result VARCHAR(500),
     FOREIGN KEY (device_id) REFERENCES device(id),
-    FOREIGN KEY (user_id) REFERENCES user(id)
-) COMMENT='报修记录表';
+    FOREIGN KEY (user_id) REFERENCES user(id),
+    FOREIGN KEY (handle_user_id) REFERENCES user(id)
+) COMMENT='repair record table';
 
 CREATE TABLE notice (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '公告ID',
-    title VARCHAR(100) NOT NULL COMMENT '标题',
-    content TEXT NOT NULL COMMENT '内容',
-    publish_user_id BIGINT COMMENT '发布人ID',
-    publish_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
-    status TINYINT DEFAULT 1 COMMENT '状态：1发布，0隐藏',
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    publish_user_id BIGINT,
+    publish_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status TINYINT DEFAULT 1 COMMENT '1 published, 0 hidden',
     FOREIGN KEY (publish_user_id) REFERENCES user(id)
-) COMMENT='公告表';
+) COMMENT='notice table';
 
-INSERT INTO role(role_name, role_code) VALUES
-('学生', 'STUDENT'),
-('实验员', 'LAB_ADMIN'),
-('管理员', 'ADMIN');
+INSERT INTO role(id, role_code, role_name) VALUES
+(1, 'ADMIN', 'Administrator'),
+(2, 'LAB_ADMIN', 'Lab Administrator'),
+(3, 'STUDENT', 'Student');
 
-INSERT INTO user(username, password, real_name, phone, email, role_id) VALUES
-('admin', '123456', '系统管理员', '13800000000', 'admin@test.com', 3),
-('lab', '123456', '实验员', '13800000001', 'lab@test.com', 2),
-('student', '123456', '学生用户', '13800000002', 'student@test.com', 1);
+INSERT INTO user(username, password, real_name, phone, email, role_id, status) VALUES
+('admin', '$2a$10$ttpjN4M.8KJ3LQWOcZ4P2OWVXfs.C4JkffMBDNuia7rFVNzAbDDIy', 'Admin', '10000000000', 'admin@example.com', 1, 1),
+('lab', '$2a$10$ttpjN4M.8KJ3LQWOcZ4P2OWVXfs.C4JkffMBDNuia7rFVNzAbDDIy', 'Lab Admin', '10000000001', 'lab@example.com', 2, 1),
+('student', '$2a$10$ttpjN4M.8KJ3LQWOcZ4P2OWVXfs.C4JkffMBDNuia7rFVNzAbDDIy', 'Student', '10000000002', 'student@example.com', 3, 1);
 
-INSERT INTO device_category(category_name, description) VALUES
-('电子测量设备', '示波器、万用表、信号发生器等'),
-('计算机设备', '台式机、笔记本、服务器等'),
-('物理实验设备', '力学、电学、光学实验设备'),
-('化学实验设备', '烧杯、试管、电子天平等');
+INSERT INTO device_category(id, name, description) VALUES
+(1, 'Computer', 'Computer equipment'),
+(2, 'Instrument', 'Experiment instruments'),
+(3, 'Tool', 'Common tools');
 
-INSERT INTO device(device_no, device_name, category_id, model, location, purchase_date, status, description) VALUES
-('DEV2026001', '数字示波器', 1, 'DS1102E', 'A101实验室', '2024-09-01', 1, '用于电子电路波形测试'),
-('DEV2026002', '数字万用表', 1, 'UT61E+', 'A101实验室', '2024-09-10', 1, '用于电压、电流、电阻测量'),
-('DEV2026003', '实验室台式电脑', 2, 'Lenovo M460', 'B203实验室', '2023-06-15', 1, '实验课程使用'),
-('DEV2026004', '电子天平', 4, 'FA2004', 'C301实验室', '2023-10-20', 3, '当前处于维修中');
+INSERT INTO device(category_id, device_no, name, model, location, status, purchase_date, remark) VALUES
+(1, 'PC-001', 'Desktop Computer', 'Dell OptiPlex', 'Lab A101', 1, '2024-09-01', 'Good'),
+(1, 'PC-002', 'Laptop', 'ThinkPad E14', 'Lab A102', 1, '2024-10-01', 'Good'),
+(2, 'OSC-001', 'Oscilloscope', 'DS1054Z', 'Lab B201', 1, '2023-05-10', 'Good'),
+(2, 'MUL-001', 'Multimeter', 'Fluke 15B+', 'Lab B202', 1, '2023-06-12', 'Good'),
+(3, 'TOOL-001', 'Screwdriver Set', 'Standard', 'Storage C301', 1, '2022-03-20', 'Good');
+
+INSERT INTO notice(title, content, publish_user_id, status) VALUES
+('Welcome', 'Welcome to use the lab equipment management system.', 1, 1),
+('Borrow Rules', 'Please return borrowed equipment before the expected return time.', 1, 1);
