@@ -1,0 +1,31 @@
+Bug 修改记录
+
+问题名称： 测试数据 SQL 脚本与当前数据库表结构不匹配
+
+问题描述：
+
+原测试数据脚本在执行时可能报错，原因是脚本中的部分字段名与当前 lab_equipment 数据库表结构不一致。例如原脚本使用了 category_name、device_name、description、repair_status、repair_result、finish_time、is_top 等字段，但当前表结构中对应字段实际为 name、remark、status、handle_result、handle_time，并且 notice 表没有 is_top 字段。
+
+修改内容：
+
+将原来的清空式测试数据脚本改为追加式脚本，避免直接 TRUNCATE 清空已有数据。
+
+角色数据改为使用 WHERE NOT EXISTS 判断后再插入，避免重复插入。
+
+用户数据改为 INSERT IGNORE，并通过 role_code 子查询获取 role_id。
+
+设备分类字段由 category_name 修改为 name。
+
+设备表字段由 device_name 修改为 name，由 description 修改为 remark。
+
+报修记录字段由 repair_status、repair_result、finish_time 修改为 status、handle_result、handle_time。
+
+公告表删除不存在的 is_top 字段。
+
+外键相关字段不再直接写死部分角色或用户 ID，而是通过子查询获取对应 ID。
+
+保留原有大量测试数据生成逻辑，并适配当前表结构。
+
+修改结果：
+
+修改后的 SQL 脚本可以适配当前数据库表结构，避免因字段不存在、外键 ID 不一致、重复插入等问题导致执行失败。
